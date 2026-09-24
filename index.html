@@ -1,0 +1,1047 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="沿地图坐标聆听七段中国非物质文化遗产音乐。">
+  <title>声纹中国 · 非遗声音航线</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23081224'/%3E%3Cpath d='M14 34h7l4-15 7 31 6-38 6 28h7' fill='none' stroke='%234de3c1' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --night: #071120;
+      --night-2: #0c1b2d;
+      --panel: rgba(8, 19, 35, 0.92);
+      --panel-solid: #0b1b2e;
+      --cyan: #4de3c1;
+      --cyan-soft: rgba(77, 227, 193, 0.16);
+      --gold: #f4ba5b;
+      --text: #f4f7f9;
+      --muted: #9aaabd;
+      --line: rgba(255, 255, 255, 0.12);
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+      --sans: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body,
+    #map {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      overflow: hidden;
+      color: var(--text);
+      background: var(--night);
+      font-family: var(--sans);
+    }
+
+    button,
+    input { font: inherit; }
+
+    button { color: inherit; }
+
+    button:focus-visible,
+    input:focus-visible,
+    .leaflet-marker-icon:focus-visible {
+      outline: 3px solid rgba(77, 227, 193, 0.48);
+      outline-offset: 3px;
+    }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: #071120;
+    }
+
+    .map-vignette {
+      position: fixed;
+      inset: 0;
+      z-index: 390;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 58% 42%, transparent 12%, rgba(4, 11, 22, 0.14) 68%, rgba(4, 11, 22, 0.5) 100%),
+        linear-gradient(90deg, rgba(4, 11, 22, 0.34), transparent 42%);
+    }
+
+    .map-grid {
+      position: fixed;
+      inset: 0;
+      z-index: 391;
+      opacity: 0.16;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(77, 227, 193, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(77, 227, 193, 0.08) 1px, transparent 1px);
+      background-size: 72px 72px;
+      mask-image: linear-gradient(90deg, transparent 24%, #000 72%);
+    }
+
+    .topbar {
+      position: fixed;
+      z-index: 900;
+      top: 20px;
+      right: 20px;
+      left: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 60px;
+      padding: 10px 12px 10px 18px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(7, 17, 32, 0.76);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 35px;
+      height: 35px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1px solid rgba(77, 227, 193, 0.4);
+      border-radius: 50%;
+      color: var(--cyan);
+      background: var(--cyan-soft);
+    }
+
+    .brand-mark svg { width: 19px; }
+
+    .brand-name {
+      overflow: hidden;
+      font-family: var(--serif);
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .route-count {
+      color: var(--muted);
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .route-count strong {
+      margin-right: 4px;
+      color: var(--cyan);
+      font-size: 1rem;
+    }
+
+    .nav-toggle {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+    }
+
+    .route-panel {
+      position: fixed;
+      z-index: 920;
+      top: 20px;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      width: 360px;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+    }
+
+    .panel-head {
+      padding: 28px 26px 22px;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 88% 6%, rgba(77, 227, 193, 0.18), transparent 36%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 50%);
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      color: var(--cyan);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+    }
+
+    .eyebrow::before {
+      width: 24px;
+      height: 1px;
+      content: "";
+      background: currentColor;
+    }
+
+    h1 {
+      max-width: 290px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(2rem, 3vw, 2.75rem);
+      font-weight: 700;
+      line-height: 1.12;
+      letter-spacing: 0.02em;
+    }
+
+    .intro {
+      margin: 15px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.75;
+    }
+
+    .panel-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 0.72rem;
+    }
+
+    .progress-line {
+      position: relative;
+      height: 2px;
+      flex: 1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .progress-line::after {
+      position: absolute;
+      inset: 0;
+      content: "";
+      background: linear-gradient(90deg, var(--cyan), var(--gold));
+    }
+
+    .track-list {
+      margin: 0;
+      padding: 10px 12px 12px;
+      overflow-y: auto;
+      list-style: none;
+      scrollbar-color: rgba(77, 227, 193, 0.35) transparent;
+      scrollbar-width: thin;
+    }
+
+    .track-item { margin: 2px 0; }
+
+    .track-button {
+      display: grid;
+      width: 100%;
+      grid-template-columns: 42px minmax(0, 1fr) 28px;
+      align-items: center;
+      gap: 11px;
+      padding: 12px 10px;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      text-align: left;
+      background: transparent;
+      cursor: pointer;
+      transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+    }
+
+    .track-button:hover {
+      border-color: var(--line);
+      background: rgba(255, 255, 255, 0.05);
+      transform: translateX(2px);
+    }
+
+    .track-button.is-active {
+      border-color: rgba(77, 227, 193, 0.3);
+      background: linear-gradient(90deg, rgba(77, 227, 193, 0.14), rgba(77, 227, 193, 0.025));
+    }
+
+    .track-number {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.17);
+      border-radius: 50%;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .track-button.is-active .track-number {
+      border-color: var(--cyan);
+      color: var(--night);
+      background: var(--cyan);
+    }
+
+    .track-copy { min-width: 0; }
+
+    .track-title {
+      display: block;
+      overflow: hidden;
+      font-family: var(--serif);
+      font-size: 0.94rem;
+      font-weight: 700;
+      line-height: 1.4;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .track-meta {
+      display: block;
+      overflow: hidden;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .track-arrow {
+      color: var(--muted);
+      font-size: 1rem;
+      transition: color 180ms ease, transform 180ms ease;
+    }
+
+    .track-button.is-active .track-arrow {
+      color: var(--cyan);
+      transform: translateX(2px);
+    }
+
+    .panel-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: auto;
+      padding: 15px 22px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.7rem;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend i {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .legend .teacher i { background: var(--gold); }
+
+    .player-dock {
+      position: fixed;
+      z-index: 910;
+      right: 20px;
+      bottom: 20px;
+      left: 400px;
+      display: grid;
+      min-height: 104px;
+      grid-template-columns: auto minmax(170px, 1fr) minmax(180px, 0.8fr);
+      align-items: center;
+      gap: 22px;
+      padding: 16px 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(7, 17, 32, 0.9);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+    }
+
+    .play-button {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      color: var(--night);
+      background: var(--cyan);
+      box-shadow: 0 0 0 7px rgba(77, 227, 193, 0.11), 0 12px 28px rgba(77, 227, 193, 0.2);
+      cursor: pointer;
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .play-button:hover {
+      transform: scale(1.045);
+      box-shadow: 0 0 0 9px rgba(77, 227, 193, 0.12), 0 12px 28px rgba(77, 227, 193, 0.26);
+    }
+
+    .play-button svg { width: 22px; height: 22px; }
+
+    .now-playing { min-width: 0; }
+
+    .now-label {
+      color: var(--cyan);
+      font-size: 0.67rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .now-title {
+      overflow: hidden;
+      margin: 5px 0 3px;
+      font-family: var(--serif);
+      font-size: 1.15rem;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .now-meta {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .timeline-wrap { min-width: 0; }
+
+    .timeline {
+      width: 100%;
+      height: 4px;
+      margin: 0;
+      accent-color: var(--cyan);
+      cursor: pointer;
+    }
+
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pulse-bars {
+      display: inline-flex;
+      height: 12px;
+      align-items: end;
+      gap: 2px;
+      margin-right: 6px;
+    }
+
+    .pulse-bars i {
+      width: 2px;
+      height: 4px;
+      border-radius: 2px;
+      background: currentColor;
+    }
+
+    .is-playing .pulse-bars i { animation: equalize 700ms ease-in-out infinite alternate; }
+
+    .is-playing .pulse-bars i:nth-child(2) { animation-delay: -260ms; }
+    .is-playing .pulse-bars i:nth-child(3) { animation-delay: -470ms; }
+
+    @keyframes equalize {
+      to { height: 12px; }
+    }
+
+    .sound-marker-shell {
+      width: 42px !important;
+      height: 42px !important;
+      margin: -21px 0 0 -21px !important;
+      border: 0;
+      background: none;
+    }
+
+    .sound-marker {
+      position: relative;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      color: var(--night);
+      background: var(--cyan);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), 0 0 0 6px rgba(77, 227, 193, 0.16);
+      font-size: 0.72rem;
+      font-weight: 800;
+      transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    .sound-marker::after {
+      position: absolute;
+      top: 39px;
+      left: 19px;
+      width: 2px;
+      height: 12px;
+      content: "";
+      background: linear-gradient(var(--cyan), transparent);
+    }
+
+    .sound-marker.teacher {
+      background: var(--gold);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36), 0 0 0 6px rgba(244, 186, 91, 0.16);
+    }
+
+    .leaflet-marker-icon:hover .sound-marker,
+    .leaflet-marker-icon.is-active .sound-marker {
+      transform: scale(1.14);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.46), 0 0 0 10px rgba(77, 227, 193, 0.16);
+    }
+
+    .leaflet-marker-icon.is-active .sound-marker.teacher {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.46), 0 0 0 10px rgba(244, 186, 91, 0.17);
+    }
+
+    .leaflet-control-zoom,
+    .leaflet-control-layers {
+      overflow: hidden;
+      border: 1px solid var(--line) !important;
+      border-radius: 12px !important;
+      background: rgba(7, 17, 32, 0.88) !important;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3) !important;
+      color: var(--text) !important;
+      backdrop-filter: blur(16px);
+    }
+
+    .leaflet-control-zoom a {
+      border-color: var(--line) !important;
+      color: var(--text) !important;
+      background: transparent !important;
+    }
+
+    .leaflet-control-layers-selector { accent-color: var(--cyan); }
+    .leaflet-control-attribution { color: #536477; background: rgba(7, 17, 32, 0.72) !important; }
+    .leaflet-control-attribution a { color: #7e91a6; }
+
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      color: var(--text);
+      background: var(--panel-solid);
+    }
+
+    .leaflet-popup-content-wrapper {
+      overflow: hidden;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      box-shadow: var(--shadow);
+    }
+
+    .leaflet-popup-content { width: 270px !important; margin: 0; }
+    .leaflet-popup-close-button { color: var(--muted) !important; }
+
+    .popup-card { padding: 19px; }
+
+    .popup-kicker {
+      margin-bottom: 8px;
+      color: var(--cyan);
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .popup-card.teacher .popup-kicker { color: var(--gold); }
+
+    .popup-card h2 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 1.2rem;
+    }
+
+    .popup-card p {
+      margin: 7px 0 14px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.6;
+    }
+
+    .popup-play {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid rgba(77, 227, 193, 0.34);
+      border-radius: 10px;
+      color: var(--cyan);
+      background: var(--cyan-soft);
+      cursor: pointer;
+    }
+
+    .popup-card.teacher .popup-play {
+      border-color: rgba(244, 186, 91, 0.38);
+      color: var(--gold);
+      background: rgba(244, 186, 91, 0.12);
+    }
+
+    @media (max-width: 900px) {
+      .topbar { left: 20px; }
+      .route-count { display: none; }
+      .nav-toggle { display: inline-flex; }
+
+      .route-panel {
+        top: 92px;
+        bottom: 20px;
+        width: min(360px, calc(100vw - 40px));
+        transform: translateX(calc(-100% - 28px));
+        transition: transform 240ms ease;
+      }
+
+      .route-panel.is-open { transform: translateX(0); }
+
+      .player-dock {
+        right: 20px;
+        left: 20px;
+        grid-template-columns: auto minmax(0, 1fr) minmax(150px, 0.7fr);
+      }
+    }
+
+    @media (max-width: 620px) {
+      .topbar {
+        top: 12px;
+        right: 12px;
+        left: 12px;
+        min-height: 56px;
+      }
+
+      .brand-sub { display: none; }
+      .brand-name { font-size: 0.96rem; }
+      .nav-toggle { padding: 0 11px; font-size: 0.8rem; }
+
+      .route-panel {
+        top: 80px;
+        bottom: 12px;
+        left: 12px;
+        width: min(350px, calc(100vw - 24px));
+      }
+
+      .panel-head { padding: 22px 20px 18px; }
+      h1 { font-size: 2rem; }
+      .intro { font-size: 0.82rem; }
+
+      .player-dock {
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        min-height: 92px;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 15px;
+        padding: 14px 15px;
+      }
+
+      .play-button { width: 52px; height: 52px; }
+      .timeline-wrap { grid-column: 1 / -1; }
+      .now-title { font-size: 1rem; }
+      .leaflet-bottom.leaflet-right { bottom: 104px; }
+      .leaflet-top.leaflet-right { top: 66px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="map" aria-label="中国非遗音乐地理分布地图"></div>
+    <div class="map-vignette" aria-hidden="true"></div>
+    <div class="map-grid" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 13h3l2-8 4 15 3-17 3 12h3"/>
+          </svg>
+        </span>
+        <div>
+          <div class="brand-name">声纹中国</div>
+          <div class="brand-sub">Intangible Sound Atlas · Route II</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="route-count"><strong>07</strong>处声音坐标</div>
+        <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="routePanel">曲目导航</button>
+      </div>
+    </header>
+
+    <aside class="route-panel" id="routePanel" aria-label="声音航线曲目列表">
+      <div class="panel-head">
+        <p class="eyebrow">非遗声音航线 · 第二辑</p>
+        <h1>沿着坐标，<br>听见中国。</h1>
+        <p class="intro">七段声音从江河、山野与古城出发，在地图上连成一条仍在生长的文化航线。</p>
+        <div class="panel-progress">
+          <span>澳门</span>
+          <span class="progress-line" aria-hidden="true"></span>
+          <span>西安</span>
+        </div>
+      </div>
+      <ol class="track-list" id="trackList"></ol>
+      <div class="panel-foot">
+        <div class="legend" aria-label="标记图例">
+          <span class="teacher"><i></i>教师示例</span>
+          <span><i></i>新增采集</span>
+        </div>
+        <span>点击曲目播放</span>
+      </div>
+    </aside>
+
+    <section class="player-dock" id="playerDock" aria-label="音乐播放器">
+      <button class="play-button" id="playButton" type="button" aria-label="播放当前曲目">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <div class="now-playing">
+        <div class="now-label"><span class="pulse-bars" aria-hidden="true"><i></i><i></i><i></i></span><span id="nowCategory">教师示例</span></div>
+        <div class="now-title" id="nowTitle">《攞鱼歌》</div>
+        <div class="now-meta" id="nowMeta">澳门咸水歌 · 中国澳门</div>
+      </div>
+      <div class="timeline-wrap">
+        <input class="timeline" id="timeline" type="range" min="0" max="100" value="0" step="0.1" aria-label="播放进度">
+        <div class="time-row"><span id="currentTime">00:00</span><span id="duration">00:00</span></div>
+      </div>
+      <audio id="audio" preload="metadata"></audio>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    "use strict";
+
+    const tracks = [
+      {
+        order: "01",
+        title: "澳门咸水歌",
+        work: "《攞鱼歌》",
+        category: "水上民歌",
+        location: "中国澳门",
+        detail: "教师提供的示例曲目",
+        teacher: true,
+        lat: 22.1987,
+        lng: 113.5439,
+        audio: "./assets/luoyuge.mp3"
+      },
+      {
+        order: "02",
+        title: "台湾客家山歌",
+        work: "《老山歌》",
+        category: "客家山歌",
+        location: "中国台湾 · 新竹",
+        detail: "徐木珍演唱 · 教师提供",
+        teacher: true,
+        lat: 24.5815,
+        lng: 121.0026,
+        audio: "./assets/laushange-hsu.mp3"
+      },
+      {
+        order: "03",
+        title: "川江号子",
+        work: "《川江船夫号子》",
+        category: "劳动号子",
+        location: "重庆 · 川江流域",
+        detail: "船工一领众和的劳动歌声",
+        teacher: false,
+        lat: 29.5630,
+        lng: 106.5516,
+        audio: "./assets/chuanjiang-haozi.mp3"
+      },
+      {
+        order: "04",
+        title: "维吾尔木卡姆",
+        work: "《拉克木卡姆·散序》",
+        category: "歌舞套曲",
+        location: "新疆 · 喀什",
+        detail: "十二木卡姆中的散板序唱",
+        teacher: false,
+        lat: 39.4704,
+        lng: 75.9898,
+        audio: "./assets/rak-muqam.mp3"
+      },
+      {
+        order: "05",
+        title: "昆曲",
+        work: "《牡丹亭·皂罗袍》",
+        category: "传统戏剧",
+        location: "江苏 · 苏州",
+        detail: "水磨腔中的园林春色",
+        teacher: false,
+        lat: 31.2989,
+        lng: 120.5853,
+        audio: "./assets/mudanting-zaoluopao.mp3"
+      },
+      {
+        order: "06",
+        title: "花儿",
+        work: "《上去高山望平川》",
+        category: "西北民歌",
+        location: "青海 · 门源",
+        detail: "以二牡丹令唱出的高原山歌",
+        teacher: false,
+        lat: 37.3767,
+        lng: 101.6200,
+        audio: "./assets/gaoshan-wang-pingchuan.mp3"
+      },
+      {
+        order: "07",
+        title: "西安鼓乐",
+        work: "《雨霖铃》",
+        category: "传统器乐",
+        location: "陕西 · 西安",
+        detail: "流传在长安古城的唐音遗韵",
+        teacher: false,
+        lat: 34.3416,
+        lng: 108.9398,
+        audio: "./assets/yulinling.mp3"
+      }
+    ];
+
+    const map = L.map("map", {
+      center: [34.4, 104.2],
+      zoom: 4,
+      minZoom: 3,
+      zoomControl: false,
+      attributionControl: true
+    });
+
+    const darkBase = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 16, attribution: "Tiles &copy; Esri" }
+    );
+
+    const darkLabels = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 16, attribution: "Labels &copy; Esri" }
+    );
+
+    const darkMap = L.layerGroup([darkBase, darkLabels]).addTo(map);
+    const topoMap = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 16, attribution: "Tiles &copy; Esri" }
+    );
+
+    L.control.zoom({ position: "topright" }).addTo(map);
+    L.control.layers({ "夜色地图": darkMap, "地形地图": topoMap }, null, { position: "topright" }).addTo(map);
+
+    const markerLayer = L.featureGroup().addTo(map);
+    const markers = [];
+    const list = document.getElementById("trackList");
+    const audio = document.getElementById("audio");
+    const playerDock = document.getElementById("playerDock");
+    const playButton = document.getElementById("playButton");
+    const playIcon = document.getElementById("playIcon");
+    const timeline = document.getElementById("timeline");
+    const currentTime = document.getElementById("currentTime");
+    const duration = document.getElementById("duration");
+    const nowCategory = document.getElementById("nowCategory");
+    const nowTitle = document.getElementById("nowTitle");
+    const nowMeta = document.getElementById("nowMeta");
+    const routePanel = document.getElementById("routePanel");
+    const navToggle = document.getElementById("navToggle");
+
+    let activeIndex = 0;
+
+    function markerIcon(item) {
+      return L.divIcon({
+        className: "sound-marker-shell",
+        html: `<span class="sound-marker ${item.teacher ? "teacher" : ""}">${item.order}</span>`,
+        iconSize: [42, 42],
+        iconAnchor: [21, 42],
+        popupAnchor: [0, -45]
+      });
+    }
+
+    function popupHtml(item, index) {
+      return `
+        <article class="popup-card ${item.teacher ? "teacher" : ""}">
+          <div class="popup-kicker">${item.order} · ${item.category}</div>
+          <h2>${item.work}</h2>
+          <p>${item.title}<br>${item.location}</p>
+          <button class="popup-play" type="button" data-track-index="${index}">播放这段声音</button>
+        </article>`;
+    }
+
+    tracks.forEach((item, index) => {
+      const listItem = document.createElement("li");
+      listItem.className = "track-item";
+      listItem.innerHTML = `
+        <button class="track-button" type="button" data-track-index="${index}" aria-label="播放${item.title}${item.work}">
+          <span class="track-number">${item.order}</span>
+          <span class="track-copy">
+            <span class="track-title">${item.title}</span>
+            <span class="track-meta">${item.location} · ${item.work}</span>
+          </span>
+          <span class="track-arrow" aria-hidden="true">↗</span>
+        </button>`;
+      list.appendChild(listItem);
+
+      const marker = L.marker([item.lat, item.lng], {
+        icon: markerIcon(item),
+        title: `${item.order} ${item.title}`,
+        alt: `${item.title}，${item.location}`
+      }).bindPopup(popupHtml(item, index), { maxWidth: 300 });
+
+      marker.on("click", () => selectTrack(index, true, true));
+      marker.addTo(markerLayer);
+      markers.push(marker);
+    });
+
+    const routeLine = L.polyline(
+      tracks.map((item) => [item.lat, item.lng]),
+      {
+        color: "#4de3c1",
+        weight: 1.5,
+        opacity: 0.48,
+        dashArray: "5 9",
+        lineCap: "round"
+      }
+    ).addTo(map);
+    routeLine.bringToBack();
+
+    function selectTrack(index, shouldPlay = false, shouldFly = true) {
+      activeIndex = index;
+      const item = tracks[index];
+
+      document.querySelectorAll(".track-button").forEach((button, buttonIndex) => {
+        button.classList.toggle("is-active", buttonIndex === index);
+        button.setAttribute("aria-current", buttonIndex === index ? "true" : "false");
+      });
+
+      markers.forEach((marker, markerIndex) => {
+        const element = marker.getElement();
+        if (element) element.classList.toggle("is-active", markerIndex === index);
+      });
+
+      nowCategory.textContent = item.teacher ? `教师示例 · ${item.category}` : `新增采集 · ${item.category}`;
+      nowTitle.textContent = item.work;
+      nowMeta.textContent = `${item.title} · ${item.location}`;
+
+      if (!audio.src.endsWith(item.audio.replace("./", "/"))) {
+        audio.src = item.audio;
+        audio.load();
+      }
+
+      if (shouldFly) {
+        map.flyTo([item.lat, item.lng], Math.max(map.getZoom(), 6), { duration: 1.15 });
+      }
+
+      if (shouldPlay) {
+        audio.play().catch(() => updatePlayingState(false));
+      }
+
+      if (window.innerWidth <= 900) {
+        routePanel.classList.remove("is-open");
+        navToggle.setAttribute("aria-expanded", "false");
+      }
+    }
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return "00:00";
+      const minutes = Math.floor(seconds / 60);
+      const remainder = Math.floor(seconds % 60);
+      return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+    }
+
+    function updatePlayingState(isPlaying) {
+      playerDock.classList.toggle("is-playing", isPlaying);
+      playButton.setAttribute("aria-label", isPlaying ? "暂停当前曲目" : "播放当前曲目");
+      playIcon.innerHTML = isPlaying
+        ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>'
+        : '<path d="M8 5v14l11-7z"/>';
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-track-index]");
+      if (!target) return;
+      const index = Number(target.dataset.trackIndex);
+      if (Number.isInteger(index)) selectTrack(index, true, true);
+    });
+
+    playButton.addEventListener("click", () => {
+      if (!audio.src) selectTrack(activeIndex, false, false);
+      if (audio.paused) audio.play();
+      else audio.pause();
+    });
+
+    audio.addEventListener("play", () => updatePlayingState(true));
+    audio.addEventListener("pause", () => updatePlayingState(false));
+    audio.addEventListener("ended", () => updatePlayingState(false));
+
+    audio.addEventListener("loadedmetadata", () => {
+      duration.textContent = formatTime(audio.duration);
+    });
+
+    audio.addEventListener("timeupdate", () => {
+      currentTime.textContent = formatTime(audio.currentTime);
+      timeline.value = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+    });
+
+    timeline.addEventListener("input", () => {
+      if (audio.duration) audio.currentTime = (Number(timeline.value) / 100) * audio.duration;
+    });
+
+    navToggle.addEventListener("click", () => {
+      const isOpen = routePanel.classList.toggle("is-open");
+      navToggle.setAttribute("aria-expanded", String(isOpen));
+    });
+
+    map.on("click", () => {
+      if (window.innerWidth <= 900) {
+        routePanel.classList.remove("is-open");
+        navToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    selectTrack(0, false, false);
+    setTimeout(() => map.fitBounds(markerLayer.getBounds(), { padding: [80, 80], maxZoom: 5 }), 80);
+  </script>
+</body>
+</html>
