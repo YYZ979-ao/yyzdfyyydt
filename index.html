@@ -888,6 +888,8 @@
     const navToggle = document.getElementById("navToggle");
 
     let activeIndex = 0;
+    let playRequested = false;
+    const audioPathCache = {};
 
     function markerIcon(item) {
       return L.divIcon({
@@ -964,8 +966,9 @@
       nowTitle.textContent = item.work;
       nowMeta.textContent = `${item.title} · ${item.location}`;
 
-      if (!audio.src.endsWith(item.audio.replace("./", "/"))) {
-        audio.src = item.audio;
+      const audioPath = audioPathCache[item.audio] || item.audio;
+      if (!audio.src.endsWith(audioPath.replace("./", "/"))) {
+        audio.src = audioPath;
         audio.load();
       }
 
@@ -974,6 +977,7 @@
       }
 
       if (shouldPlay) {
+        playRequested = true;
         audio.play().catch(() => updatePlayingState(false));
       }
 
@@ -1007,13 +1011,36 @@
 
     playButton.addEventListener("click", () => {
       if (!audio.src) selectTrack(activeIndex, false, false);
-      if (audio.paused) audio.play();
-      else audio.pause();
+      if (audio.paused) {
+        playRequested = true;
+        audio.play().catch(() => updatePlayingState(false));
+      } else {
+        audio.pause();
+      }
     });
 
     audio.addEventListener("play", () => updatePlayingState(true));
     audio.addEventListener("pause", () => updatePlayingState(false));
     audio.addEventListener("ended", () => updatePlayingState(false));
+
+    function reportAudioProblem(message) {
+      nowMeta.textContent = message;
+      updatePlayingState(false);
+    }
+
+    audio.addEventListener("error", () => {
+      const target = tracks[activeIndex] && tracks[activeIndex].audio;
+      // 兼容：若 assets/ 目录不存在（例如音频被直接传到根目录），自动回退到根目录同名文件
+      if (target && target.indexOf("/assets/") !== -1 && !audioPathCache[target]) {
+        const fallbackPath = "./" + target.split("/assets/")[1];
+        audioPathCache[target] = fallbackPath;
+        audio.src = fallbackPath;
+        audio.load();
+        if (playRequested) audio.play().catch(() => updatePlayingState(false));
+        return;
+      }
+      reportAudioProblem("音频加载失败：assets 文件夹可能没有一起上传");
+    });
 
     audio.addEventListener("loadedmetadata", () => {
       duration.textContent = formatTime(audio.duration);
